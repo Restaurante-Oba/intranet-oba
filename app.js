@@ -792,6 +792,12 @@ function _partidasOnlyStart() {
   });
 }
 
+// Sale del modo "solo Partidas" (QR) y recarga sin parámetros para ver el login.
+function salirPartidasOnly() {
+  sessionStorage.removeItem(PARTIDAS_ONLY_KEY);
+  location.replace(location.pathname);
+}
+
 // Carga solo la colección de inventario (mucho más rápido que todo).
 async function loadInventarioOnly() {
   const norm = (snap) => snap.docs.map((d) => d.data())
@@ -1393,7 +1399,17 @@ function sp(id) {
   // Float bar visibility managed by updatePedFloatBar — hide when not on pedidos
   const fb = document.getElementById("ped-float-bar");
   if (fb && id !== "pedidos") fb.classList.remove("visible");
+  if (id === "pedidos") _updatePedRecordatorio();
 }
+
+// Recordatorio en Pedidos: los martes a partir de las 12:00 (hora del dispositivo).
+function _updatePedRecordatorio() {
+  const el = document.getElementById("ped-recordatorio");
+  if (!el) return;
+  const now = new Date();
+  el.style.display = (now.getDay() === 2 && now.getHours() >= 12) ? "" : "none";
+}
+setInterval(_updatePedRecordatorio, 60000);
 
 // ── I+D ──────────────────────────────────────────────
 // Ya no pide contraseña propia: quien entra a la intranet (login principal

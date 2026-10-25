@@ -271,6 +271,10 @@
           <button class="primary-btn" onclick="oPM('ing')">Añadir ingrediente</button>
         </div>
 
+        <div class="ped-recordatorio" id="ped-recordatorio" style="display:none">
+          <i class="ph-fill ph-bell-ringing"></i> Recuerda revisar y guardar los pedidos
+        </div>
+
         <div id="staffmeal-body"></div>
 
         <div class="segmented-bar">
@@ -410,6 +414,7 @@
             <h1>Inventario por partida</h1>
             <p>Caldos · Brasas · Pastelería · Fermentos · Fermentos Neveras · Palomas</p>
           </div>
+          <button class="ghost-btn ghost-btn-sm partidas-exit-btn" onclick="salirPartidasOnly()">Entrar a la intranet</button>
         </div>
         <input class="search-input inv-toolbar-search" type="search" id="partidas-search" placeholder="Buscar producto…" oninput="rPartidas()">
         <div id="partidas-body"></div>
