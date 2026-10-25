@@ -792,6 +792,12 @@ function _partidasOnlyStart() {
   });
 }
 
+// Sale del modo "solo Partidas" (QR) y recarga sin parámetros para ver el login.
+function salirPartidasOnly() {
+  sessionStorage.removeItem(PARTIDAS_ONLY_KEY);
+  location.replace(location.pathname);
+}
+
 // Carga solo la colección de inventario (mucho más rápido que todo).
 async function loadInventarioOnly() {
   const norm = (snap) => snap.docs.map((d) => d.data())

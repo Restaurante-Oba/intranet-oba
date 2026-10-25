@@ -3610,6 +3610,8 @@ body.rep-only #hamburger-overlay{display:none !important}
 #app.partidas-only .main-nav{display:none !important}
 #app.partidas-only .mobile-nav-toggle{display:none !important}
 #app.partidas-only .hamburger-btn{display:none !important}
+.partidas-exit-btn{display:none}
+#app.partidas-only .partidas-exit-btn{display:inline-flex}
 #app.partidas-only .topbar-brand>div{display:none}
 #app.partidas-only .topbar-actions{display:none !important}
 body.partidas-only #hamburger-menu{display:none !important}
