@@ -1199,6 +1199,21 @@ tbody td:last-child{
 }
 .nd{color:var(--muted);font-size:11px;margin-top:8px}
 
+.ped-recordatorio{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin:0 0 16px;
+  padding:14px 18px;
+  border-radius:var(--radius-sm);
+  border-left:5px solid var(--orange);
+  background:#FFF4E5;
+  color:var(--ink);
+  font-weight:600;
+  font-size:15px;
+}
+.ped-recordatorio i{color:var(--orange);font-size:20px}
+
 .cmeta{color:var(--muted);font-size:11px}
 .ca{display:flex;gap:8px;flex-wrap:wrap}
 

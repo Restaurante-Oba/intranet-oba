@@ -1399,7 +1399,17 @@ function sp(id) {
   // Float bar visibility managed by updatePedFloatBar — hide when not on pedidos
   const fb = document.getElementById("ped-float-bar");
   if (fb && id !== "pedidos") fb.classList.remove("visible");
+  if (id === "pedidos") _updatePedRecordatorio();
 }
+
+// Recordatorio en Pedidos: los martes a partir de las 12:00 (hora del dispositivo).
+function _updatePedRecordatorio() {
+  const el = document.getElementById("ped-recordatorio");
+  if (!el) return;
+  const now = new Date();
+  el.style.display = (now.getDay() === 2 && now.getHours() >= 12) ? "" : "none";
+}
+setInterval(_updatePedRecordatorio, 60000);
 
 // ── I+D ──────────────────────────────────────────────
 // Ya no pide contraseña propia: quien entra a la intranet (login principal
