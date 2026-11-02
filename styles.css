@@ -3959,6 +3959,7 @@ body.partidas-only #hamburger-overlay{display:none !important}
 .libro-receta .lr-pct,.libro-receta .lr-total{color:var(--muted)}
 .libro-receta .lr-sub{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 2px}
 .libro-receta .lr-p{font-family:Georgia,serif;font-size:15px;line-height:1.55;margin:0 0 8px}
+.libro-receta .lr-nota{font-style:italic;color:var(--ink-2)}
 .libro-parte{border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px;margin:0 0 12px}
 .libro-parte textarea{width:100%}
 .etq-row{display:flex;gap:8px;align-items:center;margin:0 0 8px}

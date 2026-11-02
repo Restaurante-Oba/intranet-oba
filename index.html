@@ -251,6 +251,8 @@
             <select class="field-select" id="libro-sel" onchange="setLibro(this.value)"></select>
             <input class="search-input" type="search" placeholder="Buscar receta o ingrediente..." id="libro-search" oninput="rLibros()">
             <button class="primary-btn primary-btn-sm" onclick="oLibroEditor()">+ Nueva receta</button>
+            <button class="ghost-btn ghost-btn-sm" onclick="oLibroAjustes(false)">Ajustes</button>
+            <button class="ghost-btn ghost-btn-sm" onclick="oLibroAjustes(true)">+ Nuevo recetario</button>
             <button class="ghost-btn ghost-btn-sm" onclick="printLibro()">Imprimir recetario</button>
             <button class="ghost-btn ghost-btn-sm" onclick="printLomoLibro()">Lomo de este recetario</button>
             <button class="ghost-btn ghost-btn-sm" onclick="oEtiquetasLomo()">Etiquetas de lomo</button>
@@ -745,7 +747,7 @@
   </div>
 
   <script defer src="./qrcode.js?v=1"></script>
-  <script defer src="./recetarios-seed.js?v=1"></script>
-  <script defer src="./app.js?v=260"></script>
+  <script defer src="./recetarios-seed.js?v=2"></script>
+  <script defer src="./app.js?v=261"></script>
 </body>
 </html>
