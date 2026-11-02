@@ -240,8 +240,24 @@
             <h1>Fichas, subrecetas y técnicas</h1>
             <p>Busca por nombre o filtra por sección.</p>
           </div>
-          <button class="primary-btn" onclick="oRM()">Nuevo plato</button>
+          <button class="primary-btn" id="rec-new-plato" onclick="oRM()">Nuevo plato</button>
         </div>
+        <div class="segmented-bar">
+          <button class="segment-btn active" id="rt-platos" onclick="recSetTab('platos')">Platos</button>
+          <button class="segment-btn" id="rt-libros" onclick="recSetTab('libros')">Recetarios de partida</button>
+        </div>
+        <div id="rec-libros" style="display:none">
+          <div class="toolbar libro-toolbar">
+            <select class="field-select" id="libro-sel" onchange="setLibro(this.value)"></select>
+            <input class="search-input" type="search" placeholder="Buscar receta o ingrediente..." id="libro-search" oninput="rLibros()">
+            <button class="primary-btn primary-btn-sm" onclick="oLibroEditor()">+ Nueva receta</button>
+            <button class="ghost-btn ghost-btn-sm" onclick="printLibro()">Imprimir recetario</button>
+            <button class="ghost-btn ghost-btn-sm" onclick="printLomoLibro()">Etiqueta del lomo</button>
+          </div>
+          <div class="libro-info" id="libro-info"></div>
+          <div id="libros-body"></div>
+        </div>
+        <div id="rec-platos">
         <div class="toolbar">
           <input class="search-input" type="text" placeholder="Buscar plato..." id="rsearch" oninput="rRec()">
           <select class="field-select" id="rcat" onchange="rRec()">
@@ -259,6 +275,7 @@
           </select>
         </div>
         <div class="cards-grid" id="rcards"></div>
+        </div>
       </section>
 
       <section class="panel" id="panel-pedidos">
@@ -727,6 +744,7 @@
   </div>
 
   <script defer src="./qrcode.js?v=1"></script>
-  <script defer src="./app.js?v=259"></script>
+  <script defer src="./recetarios-seed.js?v=1"></script>
+  <script defer src="./app.js?v=260"></script>
 </body>
 </html>

@@ -3939,3 +3939,25 @@ body.partidas-only #hamburger-overlay{display:none !important}
 @media(max-width:640px){
   .staffmeal-days{grid-template-columns:1fr 1fr}
 }
+
+/* ── Recetarios de partida ── */
+.libro-toolbar{flex-wrap:wrap;gap:8px}
+.libro-toolbar .search-input{flex:1;min-width:200px}
+.libro-toolbar .field-select{flex:0 0 auto;width:auto;min-width:180px}
+.libro-info{color:var(--muted);font-size:13px;font-weight:600;margin:4px 0 14px}
+.libro-grupo{margin:0 0 22px}
+.libro-grupo-head{font-size:11px;font-weight:700;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);
+  padding-bottom:8px;margin-bottom:10px;border-bottom:1px solid var(--line-strong)}
+.libro-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.libro-card{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px 16px;border:1px solid var(--line);
+  border-radius:var(--radius-sm);background:var(--surface);cursor:pointer;font:inherit;color:var(--ink)}
+.libro-card:hover{border-color:var(--blue)}
+.libro-card strong{font-size:15px}
+.libro-card span{font-size:12px;color:var(--muted);line-height:1.35}
+.libro-receta .lr-ings{font-size:13px;color:var(--ink-2);margin:6px 0 12px}
+.libro-receta .lr-ing{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
+.libro-receta .lr-pct,.libro-receta .lr-total{color:var(--muted)}
+.libro-receta .lr-sub{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 2px}
+.libro-receta .lr-p{font-family:Georgia,serif;font-size:15px;line-height:1.55;margin:0 0 8px}
+.libro-parte{border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px;margin:0 0 12px}
+.libro-parte textarea{width:100%}
