@@ -2481,7 +2481,26 @@ function printLibroReceta(id) {
 }
 
 // Imprime el recetario con su formato. Con `soloId` imprime solo esa receta.
-async function printLibro(libro, soloId) {
+// Abre el recetario completo con su formato para verlo en pantalla (sin
+// lanzar la impresión); arriba lleva un botón para imprimir o guardar en PDF.
+function verLibro(libro) {
+  printLibro(libro, null, true);
+}
+
+// Barra superior de la vista en pantalla; no sale al imprimir.
+const _BARRA_VER = `<style>
+  .barra-ver { position: sticky; top: 0; z-index: 9; display: flex; gap: 10px; justify-content: center; padding: 10px; margin-bottom: 18mm;
+    background: #2a2a2a; font: 500 14px Roboto, Arial, sans-serif; }
+  .barra-ver button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 0; cursor: pointer; }
+  .barra-ver .imp { background: #fff; color: #111; }
+  .barra-ver .cer { background: transparent; color: #ddd; }
+  @media screen { html { background: #d9d9d9; } body { background: #fff; box-shadow: 0 0 0 14mm #fff, 0 0 0 calc(14mm + 1px) #bbb; margin: 0 auto 40mm !important; } }
+  @media screen { .receta, .indice { margin-top: 16mm; padding-top: 6mm; border-top: 1px dashed #bbb; } }
+  @media print { .barra-ver { display: none; } }
+</style>
+<div class="barra-ver"><button class="imp" onclick="window.print()">Imprimir / Guardar en PDF</button><button class="cer" onclick="window.close()">Cerrar</button></div>`;
+
+async function printLibro(libro, soloId, ver) {
   libro = libro || libroActivo;
   let grupos = _libroRecetas(libro);
   if (soloId) grupos = grupos.map(g => ({ ...g, recetas: g.recetas.filter(r => r.id === soloId) })).filter(g => g.recetas.length);
@@ -2489,7 +2508,7 @@ async function printLibro(libro, soloId) {
   const w = window.open("", "_blank");
   if (!w) { toast("Permite las ventanas emergentes para imprimir.", "err"); return; }
   const meta = _libroMeta(libro);
-  if (meta.formato === "cuaderno") return _printCuaderno(w, meta, grupos.flatMap(g => g.recetas), !soloId);
+  if (meta.formato === "cuaderno") return _printCuaderno(w, meta, grupos.flatMap(g => g.recetas), !soloId, ver);
   const pie = ((meta.titulo || libro) + " OBA").toUpperCase().replace(/"/g, "");
   const body = grupos.map(g => `
     <section class="grupo">
@@ -2510,6 +2529,10 @@ async function printLibro(libro, soloId) {
   * { box-sizing: border-box; }
   body { margin: 0; color: #111; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   main { column-count: 3; column-gap: 8mm; column-fill: auto; }
+  /* En pantalla: cada capítulo en sus 3 columnas equilibradas, uno debajo de otro. */
+  @media screen { body { width: 180mm; margin: 0 auto; } main { column-count: auto; }
+    .grupo { column-count: 3; column-gap: 8mm; break-before: auto; margin-bottom: 12mm; }
+    .grupo h2 { column-span: all; } }
   .grupo { break-before: column; }
   .grupo:first-child { break-before: auto; }
   h2 { font: 700 7.4pt Roboto, Arial, sans-serif; letter-spacing: .32em; text-transform: uppercase; color: #777;
@@ -2527,14 +2550,14 @@ async function printLibro(libro, soloId) {
   .lr-nota { font-style: italic; }
 </style>
 </head>
-<body><main>${body}</main></body></html>`);
+<body>${ver ? _BARRA_VER : ""}<main>${body}</main></body></html>`);
   w.document.close();
-  _printWhenReady(w);
+  if (!ver) _printWhenReady(w);
 }
 
 // Formato cuaderno: portada, índice con páginas, una receta por página con
 // cada elaboración en dos columnas (ingredientes | procedimiento).
-async function _printCuaderno(w, meta, recetas, completo) {
+async function _printCuaderno(w, meta, recetas, completo, ver) {
   const logo = await _ensureLogoDataUrl();
   const logoPie = logo ? await _logoConAltura(logo, 9) : "";
   const cab = [meta.titulo, meta.subtitulo].filter(Boolean).join(" - ");
@@ -2606,6 +2629,7 @@ async function _printCuaderno(w, meta, recetas, completo) {
 </style>
 </head>
 <body>
+${ver ? _BARRA_VER : ""}
 ${completo ? `<section class="portada">
   <h1>${safeText(meta.titulo || meta.nombre)}</h1>
   ${meta.subtitulo ? `<h2>${safeText(meta.subtitulo)}</h2>` : ""}
@@ -2645,7 +2669,7 @@ ${recetas.map(receta).join("")}
       if (span) span.textContent = "pág. " + pag;
       pag += paginas(sec);
     });
-  });
+  }, ver);
 }
 
 // Filas del índice del cuaderno. Si el recetario tiene capítulos (grupos),
@@ -2688,10 +2712,10 @@ function _logoConAltura(src, mm) {
 // Se lanza desde aquí y no desde un <script> de la ventana, porque ese
 // script queda bloqueado mientras la hoja de estilos de Google Fonts no
 // termina de cargar.
-function _printWhenReady(w, antes) {
+function _printWhenReady(w, antes, soloPreparar) {
   Promise.race([w.document.fonts.ready, new Promise(r => setTimeout(r, 2500))]).then(() => {
     try { if (antes) antes(w.document); } catch (e) { console.warn("print prep:", e); }
-    setTimeout(() => w.print(), 200);
+    if (!soloPreparar) setTimeout(() => w.print(), 200);
   });
 }
 
