@@ -35,7 +35,7 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
 const DS = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
 const SKILLS = ["Mise en place", "Fondos y salsas", "Carnes", "Pescados", "Pastelería", "Fermentos", "Limpieza y orden", "Trabajo en equipo"];
 const ALERGEN_LIST = ["Gluten", "Crustáceos", "Huevos", "Pescado", "Cacahuetes", "Soja", "Lácteos", "Frutos de cáscara", "Apio", "Mostaza", "Sésamo", "Dióxido de azufre", "Altramuces", "Moluscos"];
-const COLLECTIONS = ["recipes", "ingredientes", "avisos", "proyectos", "eventos", "proveedores", "practicantes", "centros", "habitaciones", "pedidosHistorial", "descargables", "empresas", "grupo_descargables", "oba_recetas", "oba_menus", "oba_ideas", "oba_kpis", "ene_recetas", "ene_menus", "ene_ideas", "ene_kpis", "candomo_recetas", "candomo_menus", "candomo_ideas", "candomo_kpis", "canitas_recetas", "canitas_menus", "canitas_ideas", "canitas_kpis", "cebo_recetas", "cebo_menus", "cebo_ideas", "cebo_kpis", "huerta_plantas", "inventario", "staff_meal", "recetarios"];
+const COLLECTIONS = ["recipes", "ingredientes", "avisos", "proyectos", "eventos", "proveedores", "practicantes", "centros", "habitaciones", "pedidosHistorial", "descargables", "empresas", "grupo_descargables", "oba_recetas", "oba_menus", "oba_ideas", "oba_kpis", "ene_recetas", "ene_menus", "ene_ideas", "ene_kpis", "candomo_recetas", "candomo_menus", "candomo_ideas", "candomo_kpis", "canitas_recetas", "canitas_menus", "canitas_ideas", "canitas_kpis", "cebo_recetas", "cebo_menus", "cebo_ideas", "cebo_kpis", "huerta_plantas", "inventario", "staff_meal", "recetarios", "etiquetas"];
 
 const REST_COL_MAP = { oba: "oba", ene: "ene", candomo: "candomo", canitas: "canitas", cebo: "cebo" };
 
@@ -527,6 +527,11 @@ const DEFAULTS = {
   recipes: DR,
   ingredientes: DI,
   recetarios: typeof RECETARIOS_SEED !== "undefined" ? RECETARIOS_SEED : [],
+  etiquetas: [
+    { id: 810001, titulo: "Recetas", subtitulo: "Fermentos", _i: 0 },
+    { id: 810002, titulo: "Recetas", subtitulo: "Cuaderno 2", _i: 1 },
+    { id: 810003, titulo: "Maridaje Natura", subtitulo: "", _i: 2 }
+  ],
   menu: [{ id: 1, plato: "Espárrago con Salsa de Acederas", seccion: "Huerta", estado: "activo", fecha: today(), nota: "Cambia según cosecha" }],
   avisos: [{ id: 1, titulo: "Bienvenida a la intranet OBA", texto: "Aquí encontraréis recetas, pedidos, avisos y novedades del restaurante.", urgente: false, fecha: today(), autor: "Dirección" }],
   proyectos: [
@@ -2383,52 +2388,136 @@ function printLibro(libro, soloId) {
   .lr-ings + .lr-p, .lr-sub + .lr-p, .rec h3 + .lr-p { text-indent: 0; }
 </style>
 </head>
-<body><main>${body}</main>
-<script>document.fonts.ready.then(() => setTimeout(() => window.print(), 200));<\/script>
-</body></html>`);
+<body><main>${body}</main></body></html>`);
   w.document.close();
+  _printWhenReady(w);
 }
 
-// Etiqueta para el lomo del archivador (28 × 155 mm).
-async function printLomoLibro(libro) {
-  libro = libro || libroActivo;
+// Espera a las fuentes (máx. 2,5 s; si no cargan se usan las de reserva),
+// ejecuta `antes` sobre el documento y abre el diálogo de impresión.
+// Se lanza desde aquí y no desde un <script> de la ventana, porque ese
+// script queda bloqueado mientras la hoja de estilos de Google Fonts no
+// termina de cargar.
+function _printWhenReady(w, antes) {
+  Promise.race([w.document.fonts.ready, new Promise(r => setTimeout(r, 2500))]).then(() => {
+    try { if (antes) antes(w.document); } catch (e) { console.warn("print prep:", e); }
+    setTimeout(() => w.print(), 200);
+  });
+}
+
+// ── Etiquetas de lomo para carpetas y archivadores (28 × 155 mm) ──
+// Colección "etiquetas": { id, titulo, subtitulo, _i }. Se imprimen las
+// marcadas, hasta 5 por hoja A4.
+function oEtiquetasLomo() {
+  const list = [...(D.etiquetas || [])].sort((a, b) => (a._i || 0) - (b._i || 0));
+  const fila = (e) => `
+    <div class="etq-row" data-id="${e.id ?? ""}">
+      <input type="checkbox" class="etq-sel" title="Imprimir esta etiqueta">
+      <input class="etq-tit" value="${safeText(e.titulo || "")}" placeholder="Título (ej: Recetas)">
+      <input class="etq-sub" value="${safeText(e.subtitulo || "")}" placeholder="Subtítulo (opcional)">
+      <button class="inv-del-btn" type="button" title="Eliminar etiqueta" onclick="this.closest('.etq-row').remove()">✕</button>
+    </div>`;
+  window._etqFila = fila;
+  oModal(`
+    <h3>Etiquetas de lomo</h3>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 12px">Tiras de 28 × 155 mm para el lomo de carpetas y archivadores. Marca las que quieras imprimir (hasta 5 por hoja). El subtítulo sale en pequeño junto al título.</p>
+    <div id="etq-list">${list.map(fila).join("")}</div>
+    <button class="secondary-btn" type="button" onclick="document.getElementById('etq-list').insertAdjacentHTML('beforeend', window._etqFila({}))">+ Añadir etiqueta</button>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <button class="primary-btn" style="flex:1" onclick="sEtiquetasLomo(true)">Guardar e imprimir marcadas</button>
+      <button class="ghost-btn" onclick="sEtiquetasLomo(false)">Guardar</button>
+    </div>`);
+}
+
+function sEtiquetasLomo(imprimir) {
+  const rows = [...document.querySelectorAll("#etq-list .etq-row")];
+  const prev = D.etiquetas || [];
+  const next = [], seleccion = [];
+  rows.forEach((row, i) => {
+    const titulo = row.querySelector(".etq-tit").value.trim();
+    if (!titulo) return;
+    const id = row.dataset.id ? Number(row.dataset.id) : nid++;
+    const e = { id, titulo, subtitulo: row.querySelector(".etq-sub").value.trim(), _i: i };
+    next.push(e);
+    if (row.querySelector(".etq-sel").checked) seleccion.push(e);
+  });
+  const nextIds = new Set(next.map(e => e.id));
+  const removed = prev.filter(e => !nextIds.has(e.id)).map(e => e.id);
+  const changed = next.filter(e => {
+    const o = prev.find(x => x.id === e.id);
+    return !o || o.titulo !== e.titulo || o.subtitulo !== e.subtitulo || o._i !== e._i;
+  });
+  D.etiquetas = next;
+  if (changed.length || removed.length) _persistDocs("etiquetas", changed, removed);
+  if (imprimir) {
+    if (!seleccion.length) { toast("Marca al menos una etiqueta para imprimir", "err"); return; }
+    printLomos(seleccion);
+  }
+  cModal();
+}
+
+// Etiqueta del recetario que se está viendo.
+function printLomoLibro(libro) {
+  printLomos([{ titulo: "Recetas", subtitulo: libro || libroActivo }]);
+}
+
+async function printLomos(etiquetas) {
   const w = window.open("", "_blank");
   if (!w) { toast("Permite las ventanas emergentes para imprimir.", "err"); return; }
   const logo = await _ensureLogoDataUrl();
+  const lomo = (e) => `
+    <div class="pieza">
+      <div class="lomo">
+        ${logo ? `<img src="${logo}" alt="OBA">` : `<div style="margin-top:6mm;font-size:16pt">oba-</div>`}
+        <hr>
+        <div class="titulo"><div class="rot">
+          <b class="${e.subtitulo ? "" : "solo"}">${safeText(e.titulo)}</b>
+          ${e.subtitulo ? `<span>${safeText(e.subtitulo)}</span>` : ""}
+        </div></div>
+      </div>
+      <div class="medida">28 × 155 mm</div>
+    </div>`;
+  const hojas = [];
+  for (let i = 0; i < etiquetas.length; i += 5) hojas.push(etiquetas.slice(i, i + 5));
   w.document.write(`<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Etiqueta lomo ${safeText(libro)}</title>
+<title>Etiquetas de lomo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Gelasio:wght@400&family=Roboto:wght@300;400&display=swap" rel="stylesheet">
 <style>
   @page { size: A4; margin: 0; }
   body { margin: 0; font-family: Roboto, Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .hoja { width: 210mm; height: 297mm; display: flex; flex-direction: column; align-items: center; padding-top: 40mm; }
-  .lomo { width: 28mm; height: 155mm; border: .3mm solid #9a9a9a; display: flex; flex-direction: column; align-items: center; }
+  .hoja { box-sizing: border-box; width: 210mm; height: 297mm; display: flex; flex-direction: column; align-items: center; padding-top: 40mm; break-after: page; }
+  .hoja:last-child { break-after: auto; }
+  .fila { display: flex; gap: 14mm; }
+  .pieza { display: flex; flex-direction: column; align-items: center; }
+  .lomo { width: 28mm; height: 155mm; border: .3mm solid #9a9a9a; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
   .lomo img { width: 17mm; margin-top: 6mm; }
   .lomo hr { width: 18mm; border: 0; border-top: .3mm solid #111; margin: 3mm 0 0; }
-  .titulo { flex: 1; display: flex; align-items: center; justify-content: center; }
+  .titulo { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; }
   .rot { transform: rotate(-90deg); display: flex; flex-direction: column; align-items: flex-start; white-space: nowrap; }
-  .rot b { font: 400 30pt/1 Gelasio, Georgia, serif; }
+  .rot b { display: block; font: 400 30pt/1 Gelasio, Georgia, serif; }
+  .rot b.solo { font-size: 46pt; }
   .rot span { font: 300 9pt Roboto, Arial, sans-serif; letter-spacing: .32em; text-transform: uppercase; margin-top: 1.5mm; }
   .medida { font-size: 6pt; color: #888; margin-top: 2mm; }
   .nota { font-size: 7pt; color: #888; margin-top: 14mm; }
 </style>
 </head>
-<body><div class="hoja">
-  <div class="lomo">
-    ${logo ? `<img src="${logo}" alt="OBA">` : `<div style="margin-top:6mm;font-size:16pt">oba-</div>`}
-    <hr>
-    <div class="titulo"><div class="rot"><b>Recetas</b><span>${safeText(libro)}</span></div></div>
-  </div>
-  <div class="medida">28 × 155 mm</div>
-  <div class="nota">Imprimir al 100 % (tamaño real, sin ajustar a página). Recortar por la línea gris.</div>
-</div>
-<script>document.fonts.ready.then(() => setTimeout(() => window.print(), 200));<\/script>
+<body>
+${hojas.map(h => `<div class="hoja"><div class="fila">${h.map(lomo).join("")}</div>
+  <div class="nota">Imprimir al 100 % (tamaño real, sin ajustar a página). Recortar por la línea gris.</div></div>`).join("")}
 </body></html>`);
   w.document.close();
+  // Si un título no cabe en los ~124 mm libres del lomo, se reduce la letra.
+  _printWhenReady(w, (doc) => {
+    const max = 124 * 96 / 25.4;
+    doc.querySelectorAll(".rot b").forEach(b => {
+      let size = parseFloat(w.getComputedStyle(b).fontSize);
+      while (b.offsetWidth > max && size > 10) { size -= 1; b.style.fontSize = size + "px"; }
+    });
+  });
 }
 
 function pedSearch() {
