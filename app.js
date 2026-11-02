@@ -35,7 +35,7 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
 const DS = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"];
 const SKILLS = ["Mise en place", "Fondos y salsas", "Carnes", "Pescados", "Pastelería", "Fermentos", "Limpieza y orden", "Trabajo en equipo"];
 const ALERGEN_LIST = ["Gluten", "Crustáceos", "Huevos", "Pescado", "Cacahuetes", "Soja", "Lácteos", "Frutos de cáscara", "Apio", "Mostaza", "Sésamo", "Dióxido de azufre", "Altramuces", "Moluscos"];
-const COLLECTIONS = ["recipes", "ingredientes", "avisos", "proyectos", "eventos", "proveedores", "practicantes", "centros", "habitaciones", "pedidosHistorial", "descargables", "empresas", "grupo_descargables", "oba_recetas", "oba_menus", "oba_ideas", "oba_kpis", "ene_recetas", "ene_menus", "ene_ideas", "ene_kpis", "candomo_recetas", "candomo_menus", "candomo_ideas", "candomo_kpis", "canitas_recetas", "canitas_menus", "canitas_ideas", "canitas_kpis", "cebo_recetas", "cebo_menus", "cebo_ideas", "cebo_kpis", "huerta_plantas", "inventario", "staff_meal"];
+const COLLECTIONS = ["recipes", "ingredientes", "avisos", "proyectos", "eventos", "proveedores", "practicantes", "centros", "habitaciones", "pedidosHistorial", "descargables", "empresas", "grupo_descargables", "oba_recetas", "oba_menus", "oba_ideas", "oba_kpis", "ene_recetas", "ene_menus", "ene_ideas", "ene_kpis", "candomo_recetas", "candomo_menus", "candomo_ideas", "candomo_kpis", "canitas_recetas", "canitas_menus", "canitas_ideas", "canitas_kpis", "cebo_recetas", "cebo_menus", "cebo_ideas", "cebo_kpis", "huerta_plantas", "inventario", "staff_meal", "recetarios"];
 
 const REST_COL_MAP = { oba: "oba", ene: "ene", candomo: "candomo", canitas: "canitas", cebo: "cebo" };
 
@@ -526,6 +526,7 @@ async function syncHuertaExtras() {
 const DEFAULTS = {
   recipes: DR,
   ingredientes: DI,
+  recetarios: typeof RECETARIOS_SEED !== "undefined" ? RECETARIOS_SEED : [],
   menu: [{ id: 1, plato: "Espárrago con Salsa de Acederas", seccion: "Huerta", estado: "activo", fecha: today(), nota: "Cambia según cosecha" }],
   avisos: [{ id: 1, titulo: "Bienvenida a la intranet OBA", texto: "Aquí encontraréis recetas, pedidos, avisos y novedades del restaurante.", urgente: false, fecha: today(), autor: "Dirección" }],
   proyectos: [
@@ -1370,7 +1371,7 @@ function startApp() {
 function renderAll() {
   if (!document.getElementById("app").classList.contains("visible")) return;
   const fns = [
-    rInicio, rRec, rPedLista, rStaffMeal, calRender, rPrac, rProj, rAv, rGrupo,
+    rInicio, rRec, () => { if (recTab === "libros") rLibros(); }, rPedLista, rStaffMeal, calRender, rPrac, rProj, rAv, rGrupo,
     () => { if (pedT === "resumen") rPedRes(); },
     () => { if (pedT === "prov") rPedProv(); },
     () => { if (pedT === "historial") rPedHistorial(); }
@@ -2138,6 +2139,296 @@ function dRec(id) {
   if (!confirm("¿Eliminar este plato?")) return;
   D.recipes = D.recipes.filter((item) => item.id !== id);
   save("recipes");
+}
+
+// ── Recetarios de partida (libros imprimibles: Fermentos, …) ──
+// Cada receta es un documento de la colección "recetarios":
+// { id, libro, grupo, nombre, porcentajes, partes: [{ titulo, ingredientes[], pasos[] }], _i }
+// Los ingredientes se guardan como texto ("2 kg de arroz") y cada paso es un párrafo.
+let recTab = "platos";
+let libroActivo = "Fermentos";
+
+function recSetTab(tab) {
+  recTab = tab;
+  document.getElementById("rt-platos")?.classList.toggle("active", tab === "platos");
+  document.getElementById("rt-libros")?.classList.toggle("active", tab === "libros");
+  document.getElementById("rec-platos").style.display = tab === "platos" ? "" : "none";
+  document.getElementById("rec-libros").style.display = tab === "libros" ? "" : "none";
+  document.getElementById("rec-new-plato").style.display = tab === "platos" ? "" : "none";
+  if (tab === "libros") rLibros();
+}
+
+function _libros() {
+  const set = [];
+  (D.recetarios || []).forEach(r => { if (r.libro && !set.includes(r.libro)) set.push(r.libro); });
+  if (!set.length) set.push("Fermentos");
+  return set;
+}
+
+// Recetas de un libro ordenadas: grupos por su primera aparición, recetas por _i.
+function _libroRecetas(libro) {
+  const items = (D.recetarios || []).filter(r => r.libro === libro).sort((a, b) => (a._i || 0) - (b._i || 0));
+  const grupos = [];
+  items.forEach(r => { const g = r.grupo || "Otras"; if (!grupos.includes(g)) grupos.push(g); });
+  return grupos.map(g => ({ grupo: g, recetas: items.filter(r => (r.grupo || "Otras") === g) }));
+}
+
+const _MASA_UNIDADES = { kg: 1000, g: 1, l: 1000, ml: 1, cl: 10 };
+function _ingGramos(txt) {
+  const m = String(txt).match(/^(\d+(?:[.,]\d+)?)\s*(kg|g|l|ml|cl)\b/i);
+  return m ? parseFloat(m[1].replace(",", ".")) * _MASA_UNIDADES[m[2].toLowerCase()] : null;
+}
+function _fmtNum(n, dec) {
+  return n.toFixed(dec).replace(/\.?0+$/, "").replace(".", ",");
+}
+// Porcentaje de cada ingrediente sobre el peso total de la receta (agua: 1 l = 1 kg).
+function _libroPorcentajes(receta) {
+  const ings = (receta.partes || []).flatMap(p => p.ingredientes || []);
+  const total = ings.reduce((s, i) => s + (_ingGramos(i) || 0), 0);
+  if (!total) return null;
+  return {
+    pct: ings.map(i => { const g = _ingGramos(i); return g == null ? "" : (g / total * 100).toFixed(1).replace(".", ",") + "%"; }),
+    total: `Total ${_fmtNum(total / 1000, 2)} kg`
+  };
+}
+
+function rLibros() {
+  const wrap = document.getElementById("libros-body");
+  if (!wrap) return;
+  const libros = _libros();
+  if (!libros.includes(libroActivo)) libroActivo = libros[0];
+  const sel = document.getElementById("libro-sel");
+  if (sel) sel.innerHTML = libros.map(l => `<option${l === libroActivo ? " selected" : ""}>${safeText(l)}</option>`).join("");
+  const q = normalizeText(document.getElementById("libro-search")?.value || "").trim();
+  const grupos = _libroRecetas(libroActivo).map(g => ({
+    grupo: g.grupo,
+    recetas: q ? g.recetas.filter(r => normalizeText(r.nombre + " " + r.grupo + " " +
+      (r.partes || []).map(p => (p.titulo || "") + " " + (p.ingredientes || []).join(" ")).join(" ")).includes(q)) : g.recetas
+  })).filter(g => g.recetas.length);
+  const total = grupos.reduce((s, g) => s + g.recetas.length, 0);
+  document.getElementById("libro-info").textContent = q
+    ? `${total} resultado${total !== 1 ? "s" : ""}`
+    : `${total} receta${total !== 1 ? "s" : ""} en ${libroActivo}`;
+  wrap.innerHTML = grupos.length ? grupos.map(g => `
+    <div class="libro-grupo">
+      <div class="libro-grupo-head">${safeText(g.grupo)}</div>
+      <div class="libro-cards">
+        ${g.recetas.map(r => {
+          const ings = (r.partes || []).flatMap(p => p.ingredientes || []);
+          return `<button class="libro-card" onclick="oLibroReceta(${r.id})">
+            <strong>${safeText(r.nombre)}</strong>
+            <span>${safeText(ings.slice(0, 3).join(" · "))}${ings.length > 3 ? " …" : ""}</span>
+          </button>`;
+        }).join("")}
+      </div>
+    </div>`).join("") : `<div class="inv-empty"><div style="font-weight:600">${q ? "No hay ninguna receta que coincida" : "Este recetario está vacío"}</div></div>`;
+}
+
+function setLibro(libro) {
+  libroActivo = libro;
+  const s = document.getElementById("libro-search");
+  if (s) s.value = "";
+  rLibros();
+}
+
+function _libroRecetaHTML(r) {
+  const pc = r.porcentajes ? _libroPorcentajes(r) : null;
+  let k = 0;
+  return (r.partes || []).map(p => `
+    ${p.titulo ? `<div class="lr-sub">${safeText(p.titulo)}</div>` : ""}
+    ${(p.ingredientes || []).length ? `<div class="lr-ings">${p.ingredientes.map(i =>
+      `<div class="lr-ing"><span>${safeText(i)}</span>${pc ? `<span class="lr-pct">${pc.pct[k++]}</span>` : ""}</div>`).join("")}
+      ${pc && p === r.partes[r.partes.length - 1] ? `<div class="lr-ing lr-total"><span>${pc.total}</span><span class="lr-pct">100%</span></div>` : ""}</div>` : ""}
+    ${(p.pasos || []).map(t => `<p class="lr-p">${safeText(t)}</p>`).join("")}`).join("");
+}
+
+function oLibroReceta(id) {
+  const r = (D.recetarios || []).find(x => x.id === id);
+  if (!r) return;
+  oModal(`
+    <div class="eyebrow">${safeText(r.libro)} · ${safeText(r.grupo || "")}</div>
+    <h3>${safeText(r.nombre)}</h3>
+    <div class="libro-receta">${_libroRecetaHTML(r)}</div>
+    <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
+      <button class="primary-btn" onclick="oLibroEditor(${r.id})">Editar</button>
+      <button class="secondary-btn" onclick="printLibroReceta(${r.id})">Imprimir esta receta</button>
+      <button class="ghost-btn" style="margin-left:auto;color:var(--red)" onclick="dLibroReceta(${r.id})">Eliminar</button>
+    </div>`);
+}
+
+function _libroParteEditor(p, idx) {
+  return `
+    <div class="libro-parte" data-idx="${idx}">
+      <div class="fr"><label>${idx ? "Título de la parte" : "Título de la parte (opcional)"}</label>
+        <input class="lp-titulo" value="${safeText(p.titulo || "")}" placeholder="Ej: Hoja de melisa encurtida"></div>
+      <div class="fr"><label>Ingredientes · uno por línea</label>
+        <textarea class="lp-ings" rows="5" placeholder="2 kg de arroz&#10;4 l de agua">${safeText((p.ingredientes || []).join("\n"))}</textarea></div>
+      <div class="fr"><label>Elaboración · un párrafo por línea</label>
+        <textarea class="lp-pasos" rows="8">${safeText((p.pasos || []).join("\n"))}</textarea></div>
+      ${idx ? `<button class="ghost-btn ghost-btn-sm" type="button" onclick="this.closest('.libro-parte').remove()">Quitar esta parte</button>` : ""}
+    </div>`;
+}
+
+function oLibroEditor(id) {
+  const r = id ? (D.recetarios || []).find(x => x.id === id) : null;
+  const libro = r?.libro || libroActivo;
+  const grupos = _libroRecetas(libro).map(g => g.grupo);
+  const partes = r?.partes?.length ? r.partes : [{ titulo: "", ingredientes: [], pasos: [] }];
+  oModal(`
+    <h3>${r ? "Editar receta" : "Nueva receta"}</h3>
+    <div class="fr"><label>Nombre *</label><input id="lr-nombre" value="${safeText(r?.nombre || "")}"></div>
+    <div class="fr"><label>Recetario</label><input id="lr-libro" list="lr-libros" value="${safeText(libro)}">
+      <datalist id="lr-libros">${_libros().map(l => `<option value="${safeText(l)}">`).join("")}</datalist></div>
+    <div class="fr"><label>Grupo (capítulo del recetario)</label><input id="lr-grupo" list="lr-grupos" value="${safeText(r?.grupo || "")}" placeholder="Ej: Misos">
+      <datalist id="lr-grupos">${grupos.map(g => `<option value="${safeText(g)}">`).join("")}</datalist></div>
+    <label class="allergen-option" style="margin:4px 0 14px"><input type="checkbox" id="lr-pct" ${r?.porcentajes ? "checked" : ""}>
+      <span>Mostrar porcentajes y total (calculados con los kg, g, l y ml de cada ingrediente)</span></label>
+    <div id="lr-partes">${partes.map(_libroParteEditor).join("")}</div>
+    <button class="secondary-btn" type="button" onclick="addLibroParte()">Añadir otra parte (con su título)</button>
+    <button class="primary-btn" style="width:100%;margin-top:16px" onclick="sLibroReceta(${r ? r.id : "null"})">Guardar</button>`);
+}
+
+function addLibroParte() {
+  const cont = document.getElementById("lr-partes");
+  if (!cont) return;
+  cont.insertAdjacentHTML("beforeend", _libroParteEditor({}, cont.children.length));
+}
+
+function sLibroReceta(id) {
+  const nombre = document.getElementById("lr-nombre").value.trim();
+  if (!nombre) return alert("El nombre es obligatorio");
+  const lines = (el) => (el?.value || "").split("\n").map(s => s.trim()).filter(Boolean);
+  const partes = [...document.querySelectorAll("#lr-partes .libro-parte")].map(b => ({
+    titulo: b.querySelector(".lp-titulo").value.trim(),
+    ingredientes: lines(b.querySelector(".lp-ings")),
+    pasos: lines(b.querySelector(".lp-pasos"))
+  })).filter((p, i) => i === 0 || p.titulo || p.ingredientes.length || p.pasos.length);
+  const payload = {
+    nombre,
+    libro: document.getElementById("lr-libro").value.trim() || "Fermentos",
+    grupo: document.getElementById("lr-grupo").value.trim() || "Otras",
+    porcentajes: document.getElementById("lr-pct").checked,
+    partes
+  };
+  if (!D.recetarios) D.recetarios = [];
+  let r = id ? D.recetarios.find(x => x.id === id) : null;
+  if (r) Object.assign(r, payload);
+  else {
+    const maxI = D.recetarios.reduce((m, x) => Math.max(m, x._i || 0), -1);
+    r = { id: nid++, ...payload, _i: maxI + 1 };
+    D.recetarios.push(r);
+  }
+  libroActivo = r.libro;
+  _persistDocs("recetarios", [r]);
+  cModal();
+  rLibros();
+}
+
+function dLibroReceta(id) {
+  const r = (D.recetarios || []).find(x => x.id === id);
+  if (!r || !confirm(`¿Eliminar "${r.nombre}" del recetario?`)) return;
+  D.recetarios = D.recetarios.filter(x => x.id !== id);
+  _persistDocs("recetarios", [], [id]);
+  cModal();
+  rLibros();
+}
+
+function printLibroReceta(id) {
+  const r = (D.recetarios || []).find(x => x.id === id);
+  if (r) printLibro(r.libro, id);
+}
+
+// Imprime el recetario con el formato compacto: A4, 3 columnas, Roboto + Gelasio.
+// Con `soloId` imprime solo esa receta.
+function printLibro(libro, soloId) {
+  libro = libro || libroActivo;
+  let grupos = _libroRecetas(libro);
+  if (soloId) grupos = grupos.map(g => ({ ...g, recetas: g.recetas.filter(r => r.id === soloId) })).filter(g => g.recetas.length);
+  if (!grupos.length) { toast("No hay recetas que imprimir", "err"); return; }
+  const w = window.open("", "_blank");
+  if (!w) { toast("Permite las ventanas emergentes para imprimir.", "err"); return; }
+  const pie = (libro + " OBA").toUpperCase().replace(/"/g, "");
+  const body = grupos.map(g => `
+    <section class="grupo">
+      <h2>${safeText(g.grupo)}</h2>
+      ${g.recetas.map(r => `<article class="rec"><h3>${safeText(r.nombre)}</h3>${_libroRecetaHTML(r)}</article>`).join("")}
+    </section>`).join("");
+  w.document.write(`<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>${safeText(libro)} OBA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Gelasio:wght@400;500&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 15mm 15mm 18mm;
+    @bottom-left { content: counter(page); font: 7.5pt Roboto, Arial, sans-serif; color: #545454; }
+    @bottom-center { content: "${pie}"; font: 7.5pt Roboto, Arial, sans-serif; letter-spacing: .14em; color: #545454; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: #111; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  main { column-count: 3; column-gap: 8mm; column-fill: auto; }
+  .grupo { break-before: column; }
+  .grupo:first-child { break-before: auto; }
+  h2 { font: 700 7.4pt Roboto, Arial, sans-serif; letter-spacing: .32em; text-transform: uppercase; color: #777;
+       margin: 0 0 7mm; padding-bottom: 2.4mm; border-bottom: .6pt solid #111; break-after: avoid; }
+  .rec { margin: 0 0 9mm; }
+  .rec h3 { font: 700 8.6pt Roboto, Arial, sans-serif; margin: 0 0 1pt; break-after: avoid; }
+  .lr-ings { font: 400 7.3pt/1.3 Roboto, Arial, sans-serif; color: #444; margin: 0 0 3.2mm; break-inside: avoid; }
+  .lr-ing { display: flex; justify-content: space-between; gap: 6pt; }
+  .lr-pct, .lr-total { color: #777; }
+  .lr-pct { white-space: nowrap; }
+  .lr-total { margin-top: 1pt; }
+  .lr-sub { font: 400 6.9pt Roboto, Arial, sans-serif; text-transform: uppercase; color: #444; margin: 3mm 0 1pt; break-after: avoid; }
+  .lr-p { font: 400 9.3pt/1.42 Gelasio, Georgia, serif; margin: 0; text-indent: 11pt; hyphens: auto; -webkit-hyphens: auto; orphans: 2; widows: 2; }
+  .lr-ings + .lr-p, .lr-sub + .lr-p, .rec h3 + .lr-p { text-indent: 0; }
+</style>
+</head>
+<body><main>${body}</main>
+<script>document.fonts.ready.then(() => setTimeout(() => window.print(), 200));<\/script>
+</body></html>`);
+  w.document.close();
+}
+
+// Etiqueta para el lomo del archivador (28 × 155 mm).
+async function printLomoLibro(libro) {
+  libro = libro || libroActivo;
+  const w = window.open("", "_blank");
+  if (!w) { toast("Permite las ventanas emergentes para imprimir.", "err"); return; }
+  const logo = await _ensureLogoDataUrl();
+  w.document.write(`<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Etiqueta lomo ${safeText(libro)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Gelasio:wght@400&family=Roboto:wght@300;400&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 0; }
+  body { margin: 0; font-family: Roboto, Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .hoja { width: 210mm; height: 297mm; display: flex; flex-direction: column; align-items: center; padding-top: 40mm; }
+  .lomo { width: 28mm; height: 155mm; border: .3mm solid #9a9a9a; display: flex; flex-direction: column; align-items: center; }
+  .lomo img { width: 17mm; margin-top: 6mm; }
+  .lomo hr { width: 18mm; border: 0; border-top: .3mm solid #111; margin: 3mm 0 0; }
+  .titulo { flex: 1; display: flex; align-items: center; justify-content: center; }
+  .rot { transform: rotate(-90deg); display: flex; flex-direction: column; align-items: flex-start; white-space: nowrap; }
+  .rot b { font: 400 30pt/1 Gelasio, Georgia, serif; }
+  .rot span { font: 300 9pt Roboto, Arial, sans-serif; letter-spacing: .32em; text-transform: uppercase; margin-top: 1.5mm; }
+  .medida { font-size: 6pt; color: #888; margin-top: 2mm; }
+  .nota { font-size: 7pt; color: #888; margin-top: 14mm; }
+</style>
+</head>
+<body><div class="hoja">
+  <div class="lomo">
+    ${logo ? `<img src="${logo}" alt="OBA">` : `<div style="margin-top:6mm;font-size:16pt">oba-</div>`}
+    <hr>
+    <div class="titulo"><div class="rot"><b>Recetas</b><span>${safeText(libro)}</span></div></div>
+  </div>
+  <div class="medida">28 × 155 mm</div>
+  <div class="nota">Imprimir al 100 % (tamaño real, sin ajustar a página). Recortar por la línea gris.</div>
+</div>
+<script>document.fonts.ready.then(() => setTimeout(() => window.print(), 200));<\/script>
+</body></html>`);
+  w.document.close();
 }
 
 function pedSearch() {
@@ -10007,15 +10298,19 @@ function _cmpCaja(a, b) {
 // Guarda en Firestore solo los productos tocados (antes se reescribía todo
 // el inventario en cada cambio, lo que lo hacía lento y provocaba saltos).
 function _invPersist(changed = [], removedIds = []) {
+  _persistDocs("inventario", changed, removedIds);
+}
+
+function _persistDocs(colName, changed = [], removedIds = []) {
   computeNextId();
   if (storageMode === "firebase" && db) {
-    const col = db.collection("inventario");
+    const col = db.collection(colName);
     const batch = db.batch();
     changed.forEach(it => batch.set(col.doc(String(it.id)), { ...it }));
     removedIds.forEach(id => batch.delete(col.doc(String(id))));
     batch.commit()
       .then(() => toast("✓ Guardado"))
-      .catch((err) => { console.warn("Inventario save error:", err); toast("Error al guardar", "err"); });
+      .catch((err) => { console.warn(colName + " save error:", err); toast("Error al guardar", "err"); });
   } else {
     persistLocal();
     toast("✓ Guardado");
