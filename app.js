@@ -810,7 +810,7 @@ async function loadInventarioOnly() {
     if (snap.empty) return;
     D.inventario = norm(snap);
     computeNextId();
-    if (document.getElementById("panel-partidas")?.classList.contains("active")) rPartidas();
+    _invRefreshFromRemote(snap);
   });
 }
 
@@ -929,6 +929,7 @@ async function loadFromFirebase() {
         return merged;
       });
       computeNextId();
+      if (col === "inventario") _invRefreshFromRemote(snap);
       scheduleRender();
     });
   });
@@ -9901,13 +9902,14 @@ function rPartidas() {
     ? items.filter(it => normalizeText(it.producto).includes(q) || normalizeText(it.nota || "").includes(q))
     : items;
 
-  // Orden de cajas por primera aparición
+  // Cajas ordenadas por su número ("Caja 2" antes que "Caja 10")
   const cajaOrder = [];
   const byCaja = {};
   filteredItems.forEach(it => {
     if (!byCaja[it.caja]) { byCaja[it.caja] = []; cajaOrder.push(it.caja); }
     byCaja[it.caja].push(it);
   });
+  cajaOrder.sort(_cmpCaja);
 
   const tabs = PARTIDAS.map(p => {
     const n = (D.inventario || []).filter(it => it.partida === p).length;
@@ -9923,7 +9925,7 @@ function rPartidas() {
       return `
       <div class="inv-row">
         <div class="inv-row-main">
-          <input class="inv-input inv-input-prod" value="${safeText(it.producto)}"
+          <input class="inv-input inv-input-prod" data-id="${it.id}" value="${safeText(it.producto)}"
                  onchange="invSetCampo(${it.id},'producto',this.value)" placeholder="Producto">
           <div class="inv-row-sub">
             <select class="inv-size" title="Tamaño de bolsa"
@@ -9997,34 +9999,87 @@ function rPartidas() {
   }
 }
 
+// Orden natural de cajas: compara los números dentro del nombre.
+function _cmpCaja(a, b) {
+  return String(a).localeCompare(String(b), "es", { numeric: true, sensitivity: "base" });
+}
+
+// Guarda en Firestore solo los productos tocados (antes se reescribía todo
+// el inventario en cada cambio, lo que lo hacía lento y provocaba saltos).
+function _invPersist(changed = [], removedIds = []) {
+  computeNextId();
+  if (storageMode === "firebase" && db) {
+    const col = db.collection("inventario");
+    const batch = db.batch();
+    changed.forEach(it => batch.set(col.doc(String(it.id)), { ...it }));
+    removedIds.forEach(id => batch.delete(col.doc(String(id))));
+    batch.commit()
+      .then(() => toast("✓ Guardado"))
+      .catch((err) => { console.warn("Inventario save error:", err); toast("Error al guardar", "err"); });
+  } else {
+    persistLocal();
+    toast("✓ Guardado");
+  }
+}
+
+function _invNuevo(caja) {
+  if (!D.inventario) D.inventario = [];
+  const maxI = D.inventario.reduce((m, x) => Math.max(m, x._i || 0), -1);
+  const it = { id: nid++, partida: partidaActiva, caja, producto: "", cantidad: "", nota: "", _i: maxI + 1 };
+  D.inventario.push(it);
+  return it;
+}
+
+// Cambios que llegan de Firestore (otro dispositivo). Si alguien está
+// escribiendo en el inventario no redibujamos hasta que salga del campo,
+// para no robarle el foco ni lo que está tecleando.
+let _invPendingRender = false;
+function _invRefreshFromRemote(snap) {
+  if (snap && snap.metadata && snap.metadata.hasPendingWrites) return; // eco de nuestro propio guardado
+  if (!document.getElementById("panel-partidas")?.classList.contains("active")) return;
+  const body = document.getElementById("partidas-body");
+  if (body && body.contains(document.activeElement) && document.activeElement.matches("input, select")) {
+    _invPendingRender = true;
+    return;
+  }
+  rPartidas();
+}
+document.addEventListener("focusout", (e) => {
+  if (!_invPendingRender || !e.target.closest?.("#partidas-body")) return;
+  setTimeout(() => {
+    const body = document.getElementById("partidas-body");
+    if (body && body.contains(document.activeElement) && document.activeElement.matches("input, select")) return;
+    _invPendingRender = false;
+    rPartidas();
+  }, 0);
+});
+
 function invAddCaja() {
   const nombre = (prompt("Nombre de la caja (ej: Caja 9):") || "").trim();
   if (!nombre) return;
-  if (!D.inventario) D.inventario = [];
   // Caja vacía: creamos un producto en blanco para que aparezca la caja
-  D.inventario.push({ id: nid++, partida: partidaActiva, caja: nombre, producto: "", cantidad: "", nota: "" });
-  save("inventario");
+  const it = _invNuevo(nombre);
+  _invPersist([it]);
   rPartidas();
+  _flashCaja(nombre, 0);
 }
 
 function invAddProducto(caja) {
-  if (!D.inventario) D.inventario = [];
-  D.inventario.push({ id: nid++, partida: partidaActiva, caja, producto: "", cantidad: "", nota: "" });
-  save("inventario");
+  const it = _invNuevo(caja);
+  _invPersist([it]);
   rPartidas();
-  // Enfocar el último input de producto de esa caja
+  // Enfocar el producto nuevo de esa caja
   setTimeout(() => {
-    const inputs = document.querySelectorAll(".inv-input-prod");
-    const last = inputs[inputs.length - 1];
-    if (last) last.focus();
+    const el = document.querySelector(`.inv-input-prod[data-id="${it.id}"]`);
+    if (el) el.focus();
   }, 40);
 }
 
 function invSetCampo(id, campo, val) {
   const it = (D.inventario || []).find(x => x.id === id);
-  if (!it) return;
+  if (!it || it[campo] === val) return;
   it[campo] = val;
-  save("inventario");
+  _invPersist([it]);
 }
 
 function invDelProducto(id) {
@@ -10032,24 +10087,26 @@ function invDelProducto(id) {
   if (!it) return;
   if (it.producto && !confirm(`¿Eliminar "${it.producto}"?`)) return;
   D.inventario = D.inventario.filter(x => x.id !== id);
-  save("inventario");
+  _invPersist([], [id]);
   rPartidas();
 }
 
 function invDelCaja(caja) {
   if (!confirm(`¿Eliminar la caja "${caja}" y todos sus productos?`)) return;
+  const ids = (D.inventario || []).filter(x => x.partida === partidaActiva && x.caja === caja).map(x => x.id);
   D.inventario = (D.inventario || []).filter(x => !(x.partida === partidaActiva && x.caja === caja));
-  save("inventario");
+  _invPersist([], ids);
   rPartidas();
 }
 
 function invRenameCaja(oldName, newName) {
   newName = (newName || "").trim();
   if (!newName || newName === oldName) { rPartidas(); return; }
+  const changed = [];
   (D.inventario || []).forEach(x => {
-    if (x.partida === partidaActiva && x.caja === oldName) x.caja = newName;
+    if (x.partida === partidaActiva && x.caja === oldName) { x.caja = newName; changed.push(x); }
   });
-  save("inventario");
+  _invPersist(changed);
   rPartidas();
 }
 
@@ -10069,6 +10126,7 @@ function imprimirQRCajas(soloCaja) {
   const items = (D.inventario || []).filter(it => it.partida === partida);
   const cajas = [];
   items.forEach(it => { if (!cajas.includes(it.caja)) cajas.push(it.caja); });
+  cajas.sort(_cmpCaja);
   const lista = soloCaja ? cajas.filter(c => c === soloCaja) : cajas;
   if (!lista.length) { toast("No hay cajas en " + partida, "err"); return; }
 
