@@ -2206,7 +2206,8 @@ function _libros() {
 // Recetas de un libro ordenadas: grupos por su primera aparición, recetas por _i.
 function _libroRecetas(libro) {
   const items = (D.recetarios || []).filter(r => r.libro === libro).sort((a, b) => (a._i || 0) - (b._i || 0));
-  const grupos = [];
+  // Capítulos definidos en el recetario (p. ej. parajes del menú) primero, en su orden.
+  const grupos = (_libroMeta(libro).grupos || []).map(g => g.nombre).filter(g => items.some(r => (r.grupo || "") === g));
   items.forEach(r => { const g = r.grupo || ""; if (!grupos.includes(g)) grupos.push(g); });
   return grupos.map(g => ({ grupo: g, recetas: items.filter(r => (r.grupo || "") === g) }));
 }
@@ -2321,7 +2322,9 @@ function oLibroReceta(id) {
   oModal(`
     <div class="eyebrow">${safeText(r.libro)}${r.grupo ? " · " + safeText(r.grupo) : ""}</div>
     <h3>${safeText(r.nombre)}</h3>
+    ${r.subtitulo ? `<p class="lr-subt">${safeText(r.subtitulo)}</p>` : ""}
     ${r.intro ? `<p class="lr-intro">${safeText(r.intro)}</p>` : ""}
+    ${r.alergenos ? `<p class="lr-alerg"><b>Alérgenos:</b> ${safeText(r.alergenos)}</p>` : ""}
     <div class="libro-receta">${_libroRecetaHTML(r)}</div>
     <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
       <button class="primary-btn" onclick="oLibroEditor(${r.id})">Editar</button>
@@ -2355,7 +2358,9 @@ function oLibroEditor(id) {
     <div class="fr"><label>Nombre *</label><input id="lr-nombre" value="${safeText(r?.nombre || "")}"></div>
     <div class="fr"><label>Recetario</label><select class="field-select" id="lr-libro">${_libros().map(l =>
       `<option${l === libro ? " selected" : ""}>${safeText(l)}</option>`).join("")}</select></div>
+    <div class="fr"><label>Número y subtítulo (opcional · ej: 2.1 · Pinar · Otoño)</label><input id="lr-subt" value="${safeText(r?.subtitulo || "")}"></div>
     <div class="fr"><label>Frase bajo el título, en cursiva (opcional)</label><input id="lr-intro" value="${safeText(r?.intro || "")}"></div>
+    <div class="fr"><label>Alérgenos (opcional · separados por ·)</label><input id="lr-alerg" value="${safeText(r?.alergenos || "")}" placeholder="Huevos · Lácteos · Dióxido de azufre"></div>
     <div class="fr"><label>Grupo / capítulo (opcional)</label><input id="lr-grupo" list="lr-grupos" value="${safeText(r?.grupo || "")}" placeholder="Ej: Misos">
       <datalist id="lr-grupos">${grupos.map(g => `<option value="${safeText(g)}">`).join("")}</datalist></div>
     <label class="allergen-option" style="margin:4px 0 14px"><input type="checkbox" id="lr-pct" ${r?.porcentajes ? "checked" : ""}>
@@ -2386,6 +2391,8 @@ function sLibroReceta(id) {
     libro: document.getElementById("lr-libro").value,
     grupo: document.getElementById("lr-grupo").value.trim(),
     intro: document.getElementById("lr-intro").value.trim(),
+    subtitulo: document.getElementById("lr-subt").value.trim(),
+    alergenos: document.getElementById("lr-alerg").value.trim(),
     porcentajes: document.getElementById("lr-pct").checked,
     partes
   };
@@ -2425,6 +2432,8 @@ function oLibroAjustes(nuevo) {
     <div class="fr"><label>Título de la portada / pie de página</label><input id="lb-titulo" value="${safeText(m.titulo || "")}" placeholder="Ej: Maridaje Natura"></div>
     <div class="fr"><label>Subtítulo (cuaderno)</label><input id="lb-sub" value="${safeText(m.subtitulo || "")}" placeholder="Ej: Cuaderno 2"></div>
     <div class="fr"><label>Frase de la portada (cuaderno)</label><input id="lb-desc" value="${safeText(m.descripcion || "")}"></div>
+    <div class="fr"><label>Capítulos del índice (opcional · uno por línea: código | nombre | nota)</label>
+      <textarea id="lb-grupos" rows="4" placeholder="02 | Pinar&#10;01 | Huerta | Platos según lo que haya en la huerta">${safeText((m.grupos || []).map(g => [g.codigo, g.nombre, g.nota].filter(x => x != null && x !== "").join(" | ")).join("\n"))}</textarea></div>
     <label class="allergen-option" style="margin:0 0 8px"><input type="checkbox" id="lb-num" ${m.numerar === false ? "" : "checked"}>
       <span>Numerar los pasos (1., 2., 3.…) en formato cuaderno</span></label>
     <label class="allergen-option" style="margin:0 0 12px"><input type="checkbox" id="lb-guion" ${m.guiones ? "checked" : ""}>
@@ -2444,6 +2453,8 @@ function sLibroAjustes(nuevo) {
     subtitulo: document.getElementById("lb-sub").value.trim(),
     descripcion: document.getElementById("lb-desc").value.trim(),
     numerar: document.getElementById("lb-num").checked,
+    grupos: document.getElementById("lb-grupos").value.split("\n").map(l => l.split("|").map(x => x.trim()))
+      .filter(c => c[0] || c[1]).map(c => c.length === 1 ? { codigo: "", nombre: c[0], nota: "" } : { codigo: c[0], nombre: c[1] || "", nota: c[2] || "" }),
     guiones: document.getElementById("lb-guion").checked
   };
   let meta = nuevo ? null : D.libros.find(l => l.nombre === libroActivo);
@@ -2530,7 +2541,9 @@ async function _printCuaderno(w, meta, recetas, completo) {
   const receta = (r) => `
     <section class="receta">
       <h1>${safeText(r.nombre)}</h1>
+      ${r.subtitulo ? `<p class="subt">${safeText(r.subtitulo)}</p>` : ""}
       ${r.intro ? `<p class="intro">${safeText(r.intro)}</p>` : ""}
+      ${r.alergenos ? `<div class="elab"><div class="izq"><div class="et">Alérgenos:</div></div><div class="der"><p class="lr-p">${safeText(r.alergenos)}</p></div></div>` : ""}
       ${(r.partes || []).map(p => {
         const nums = meta.numerar === false ? [] : _numerarPasos(p.pasos);
         return `<div class="elab">
@@ -2574,6 +2587,12 @@ async function _printCuaderno(w, meta, recetas, completo) {
   .intro { font: italic 9.8pt/1.4 Roboto, Arial, sans-serif; color: #444; text-align: center; margin: 0 8mm 9mm; }
   .indice { break-before: page; padding: 0 12mm; }
   .indice .fila { display: flex; justify-content: space-between; font-size: 11pt; padding: 1.4mm 0; border-bottom: .3mm solid #bbb; }
+  .indice.por-grupos { padding: 0 21mm; }
+  .indice.por-grupos h1 { margin: -4mm 0 5mm; }
+  .por-grupos .cap { font: italic 700 9.3pt/1.2 Roboto, Arial, sans-serif; letter-spacing: .2em; margin: 2.3mm 0 0; padding-bottom: .4mm; border-bottom: .3mm solid #777; }
+  .por-grupos .fila { font-size: 8.6pt; line-height: 1.2; padding: .35mm 0 .25mm; border-bottom: .25mm dotted #aaa; }
+  .por-grupos .fila.nota { font-style: italic; }
+  .subt { font: 400 8pt Roboto, Arial, sans-serif; color: #777; letter-spacing: .25em; text-transform: uppercase; text-align: center; margin: -6mm 0 8mm; }
   .receta { break-before: page; }
   .elab { display: grid; grid-template-columns: 70mm 1fr; column-gap: 3mm; margin: 0 0 4.4mm; }
   .et { font-weight: 700; text-decoration: underline; margin: 0 0 2.2mm; }
@@ -2593,8 +2612,7 @@ ${completo ? `<section class="portada">
   ${meta.descripcion ? `<p>${safeText(meta.descripcion)}</p>` : ""}
   ${logo ? `<img src="${logo}" alt="OBA">` : ""}
 </section>
-<section class="indice"><h1>Índice</h1>${recetas.map((r, i) =>
-  `<div class="fila"><span>${safeText(r.nombre)}</span><span class="pag" data-i="${i}"></span></div>`).join("")}</section>` : ""}
+<section class="indice${(meta.grupos || []).length ? " por-grupos" : ""}"><h1>Índice</h1>${_indiceCuaderno(meta, recetas)}</section>` : ""}
 ${recetas.map(receta).join("")}
 </body></html>`);
   w.document.close();
@@ -2607,7 +2625,7 @@ ${recetas.map(receta).join("")}
     const util = (297 - 27 - 24) * 96 / 25.4;
     const paginas = (sec) => {
       const top0 = sec.getBoundingClientRect().top;
-      const bloques = [...sec.querySelectorAll("h1, .intro, .et, tr, .lr-p")]
+      const bloques = [...sec.querySelectorAll("h1, .subt, .intro, .et, tr, .lr-p")]
         .map(el => { const r = el.getBoundingClientRect(); return { t: r.top - top0, h: r.height }; })
         .sort((a, b) => a.t - b.t);
       let desplaz = 0, finHoja = util, n = 1;
@@ -2628,6 +2646,25 @@ ${recetas.map(receta).join("")}
       pag += paginas(sec);
     });
   });
+}
+
+// Filas del índice del cuaderno. Si el recetario tiene capítulos (grupos),
+// se agrupan bajo "02 — PINAR" y se muestran también los capítulos sin
+// recetas que llevan una nota (p. ej. Huerta).
+function _indiceCuaderno(meta, recetas) {
+  const num = (r) => { const m = (r.subtitulo || "").match(/^\d[\d.]*/); return m ? m[0] + " " : ""; };
+  const fila = (r) => `<div class="fila"><span>${safeText(num(r) + r.nombre)}</span><span class="pag" data-i="${recetas.indexOf(r)}"></span></div>`;
+  const caps = meta.grupos || [];
+  if (!caps.length) return recetas.map(fila).join("");
+  const usados = new Set();
+  const html = caps.map(g => {
+    const rs = recetas.filter(r => (r.grupo || "") === g.nombre);
+    rs.forEach(r => usados.add(r));
+    if (!rs.length && !g.nota) return "";
+    return `<div class="cap">${safeText([g.codigo, g.nombre.toUpperCase()].filter(Boolean).join(" — "))}</div>
+      ${g.nota ? `<div class="fila nota"><span>${safeText(g.nota)}</span></div>` : ""}${rs.map(fila).join("")}`;
+  }).join("");
+  return html + recetas.filter(r => !usados.has(r)).map(fila).join("");
 }
 
 // El logo como SVG de `mm` de alto: una imagen en el margen de la página
