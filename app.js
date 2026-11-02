@@ -2249,6 +2249,11 @@ function _pasoHTML(txt, num) {
     ? `<p class="lr-p lr-paso"><b>${num}.</b> ${safeText(txt)}</p>`
     : `<p class="lr-p">${safeText(txt)}</p>`;
 }
+// Pasos numerados (1., 2., …) solo en cuadernos que los usan.
+function _libroNumera(libro) {
+  const m = _libroMeta(libro);
+  return m.formato === "cuaderno" && m.numerar !== false;
+}
 function _numerarPasos(pasos) {
   let n = 0;
   return (pasos || []).map(t => (t.startsWith("* ") || /^\*\*.+?\*\*/.test(t)) ? null : ++n);
@@ -2306,7 +2311,7 @@ function _libroRecetaHTML(r) {
     ${(p.ingredientes || []).length ? `<div class="lr-ings">${p.ingredientes.map(i =>
       `<div class="lr-ing"><span>${safeText(_ingTexto(i))}</span>${pc ? `<span class="lr-pct">${pc.pct[k++]}</span>` : ""}</div>`).join("")}
       ${pc && pi === ultima ? `<div class="lr-ing lr-total"><span>${pc.total}</span><span class="lr-pct">100%</span></div>` : ""}</div>` : ""}
-    ${(p.pasos || []).map((t, i) => _pasoHTML(t, _libroMeta(r.libro).formato === "cuaderno" ? nums[i] : null)).join("")}`;
+    ${(p.pasos || []).map((t, i) => _pasoHTML(t, _libroNumera(r.libro) ? nums[i] : null)).join("")}`;
   }).join("");
 }
 
@@ -2316,6 +2321,7 @@ function oLibroReceta(id) {
   oModal(`
     <div class="eyebrow">${safeText(r.libro)}${r.grupo ? " · " + safeText(r.grupo) : ""}</div>
     <h3>${safeText(r.nombre)}</h3>
+    ${r.intro ? `<p class="lr-intro">${safeText(r.intro)}</p>` : ""}
     <div class="libro-receta">${_libroRecetaHTML(r)}</div>
     <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
       <button class="primary-btn" onclick="oLibroEditor(${r.id})">Editar</button>
@@ -2333,6 +2339,8 @@ function _libroParteEditor(p, idx) {
         <textarea class="lp-ings" rows="5" placeholder="Arroz | 2 kg&#10;Agua | 4 l">${safeText((p.ingredientes || []).join("\n"))}</textarea></div>
       <div class="fr"><label>Pasos · uno por línea · empieza con * para una nota en cursiva, o con **Título:** para un paso con título</label>
         <textarea class="lp-pasos" rows="8">${safeText((p.pasos || []).join("\n"))}</textarea></div>
+      <label class="allergen-option" style="margin:0 0 10px"><input type="checkbox" class="lp-proc" ${p.procedimiento === false ? "" : "checked"}>
+        <span>Encabezar los pasos con "Procedimiento:" (formato cuaderno)</span></label>
       ${idx ? `<button class="ghost-btn ghost-btn-sm" type="button" onclick="this.closest('.libro-parte').remove()">Quitar esta elaboración</button>` : ""}
     </div>`;
 }
@@ -2347,6 +2355,7 @@ function oLibroEditor(id) {
     <div class="fr"><label>Nombre *</label><input id="lr-nombre" value="${safeText(r?.nombre || "")}"></div>
     <div class="fr"><label>Recetario</label><select class="field-select" id="lr-libro">${_libros().map(l =>
       `<option${l === libro ? " selected" : ""}>${safeText(l)}</option>`).join("")}</select></div>
+    <div class="fr"><label>Frase bajo el título, en cursiva (opcional)</label><input id="lr-intro" value="${safeText(r?.intro || "")}"></div>
     <div class="fr"><label>Grupo / capítulo (opcional)</label><input id="lr-grupo" list="lr-grupos" value="${safeText(r?.grupo || "")}" placeholder="Ej: Misos">
       <datalist id="lr-grupos">${grupos.map(g => `<option value="${safeText(g)}">`).join("")}</datalist></div>
     <label class="allergen-option" style="margin:4px 0 14px"><input type="checkbox" id="lr-pct" ${r?.porcentajes ? "checked" : ""}>
@@ -2369,12 +2378,14 @@ function sLibroReceta(id) {
   const partes = [...document.querySelectorAll("#lr-partes .libro-parte")].map(b => ({
     titulo: b.querySelector(".lp-titulo").value.trim(),
     ingredientes: lines(b.querySelector(".lp-ings")),
-    pasos: lines(b.querySelector(".lp-pasos"))
+    pasos: lines(b.querySelector(".lp-pasos")),
+    procedimiento: b.querySelector(".lp-proc").checked
   })).filter((p, i) => i === 0 || p.titulo || p.ingredientes.length || p.pasos.length);
   const payload = {
     nombre,
     libro: document.getElementById("lr-libro").value,
     grupo: document.getElementById("lr-grupo").value.trim(),
+    intro: document.getElementById("lr-intro").value.trim(),
     porcentajes: document.getElementById("lr-pct").checked,
     partes
   };
@@ -2403,7 +2414,7 @@ function dLibroReceta(id) {
 
 // Ajustes de un recetario (o uno nuevo): nombre, formato de impresión y portada.
 function oLibroAjustes(nuevo) {
-  const m = nuevo ? { nombre: "", formato: "cuaderno", titulo: "", subtitulo: "", descripcion: "" } : _libroMeta(libroActivo);
+  const m = nuevo ? { nombre: "", formato: "cuaderno", titulo: "", subtitulo: "", descripcion: "", numerar: true, guiones: false } : _libroMeta(libroActivo);
   oModal(`
     <h3>${nuevo ? "Nuevo recetario" : "Ajustes del recetario"}</h3>
     <div class="fr"><label>Nombre en la intranet *</label><input id="lb-nombre" value="${safeText(m.nombre)}" placeholder="Ej: Maridaje Natura · Cuaderno 2"></div>
@@ -2414,6 +2425,10 @@ function oLibroAjustes(nuevo) {
     <div class="fr"><label>Título de la portada / pie de página</label><input id="lb-titulo" value="${safeText(m.titulo || "")}" placeholder="Ej: Maridaje Natura"></div>
     <div class="fr"><label>Subtítulo (cuaderno)</label><input id="lb-sub" value="${safeText(m.subtitulo || "")}" placeholder="Ej: Cuaderno 2"></div>
     <div class="fr"><label>Frase de la portada (cuaderno)</label><input id="lb-desc" value="${safeText(m.descripcion || "")}"></div>
+    <label class="allergen-option" style="margin:0 0 8px"><input type="checkbox" id="lb-num" ${m.numerar === false ? "" : "checked"}>
+      <span>Numerar los pasos (1., 2., 3.…) en formato cuaderno</span></label>
+    <label class="allergen-option" style="margin:0 0 12px"><input type="checkbox" id="lb-guion" ${m.guiones ? "checked" : ""}>
+      <span>Ingredientes con guion delante (formato cuaderno)</span></label>
     <button class="primary-btn" style="width:100%;margin-top:8px" onclick="sLibroAjustes(${nuevo ? "true" : "false"})">Guardar</button>`);
 }
 
@@ -2427,7 +2442,9 @@ function sLibroAjustes(nuevo) {
     formato: document.getElementById("lb-formato").value,
     titulo: document.getElementById("lb-titulo").value.trim() || nombre,
     subtitulo: document.getElementById("lb-sub").value.trim(),
-    descripcion: document.getElementById("lb-desc").value.trim()
+    descripcion: document.getElementById("lb-desc").value.trim(),
+    numerar: document.getElementById("lb-num").checked,
+    guiones: document.getElementById("lb-guion").checked
   };
   let meta = nuevo ? null : D.libros.find(l => l.nombre === libroActivo);
   const recetasMovidas = [];
@@ -2513,15 +2530,16 @@ async function _printCuaderno(w, meta, recetas, completo) {
   const receta = (r) => `
     <section class="receta">
       <h1>${safeText(r.nombre)}</h1>
+      ${r.intro ? `<p class="intro">${safeText(r.intro)}</p>` : ""}
       ${(r.partes || []).map(p => {
-        const nums = _numerarPasos(p.pasos);
+        const nums = meta.numerar === false ? [] : _numerarPasos(p.pasos);
         return `<div class="elab">
           <div class="izq">
             ${p.titulo ? `<div class="et">${safeText(p.titulo)}:</div>` : ""}
-            <table>${(p.ingredientes || []).map(i => { const [n, c] = _ingPar(i); return `<tr><td>${safeText(n)}</td><td>${safeText(c)}</td></tr>`; }).join("")}</table>
+            <table>${(p.ingredientes || []).map(i => { const [n, c] = _ingPar(i); return `<tr>${meta.guiones ? `<td class="g">-</td>` : ""}<td>${safeText(n)}</td><td>${safeText(c)}</td></tr>`; }).join("")}</table>
           </div>
           <div class="der">
-            ${(p.pasos || []).length ? `<div class="et">Procedimiento:</div>` : ""}
+            ${(p.pasos || []).length && p.procedimiento !== false ? `<div class="et">Procedimiento:</div>` : ""}
             ${(p.pasos || []).map((t, i) => _pasoHTML(t, nums[i])).join("")}
           </div>
         </div>`;
@@ -2535,30 +2553,37 @@ async function _printCuaderno(w, meta, recetas, completo) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Gelasio:wght@400&family=Roboto:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>
-  @page { size: A4; margin: 27mm 22mm 30mm;
-    @top-left { content: "${cab.replace(/"/g, "")}"; font: 7pt Roboto, Arial, sans-serif; color: #555; vertical-align: bottom; padding-bottom: 4mm; }
-    @top-right { content: "pág. " counter(page); font: 7pt Roboto, Arial, sans-serif; color: #545454; vertical-align: bottom; padding-bottom: 4mm; }
-    ${logoPie ? `@bottom-center { content: url("${logoPie}"); vertical-align: top; padding-top: 9mm; }` : ""} }
-  @page :first { margin: 0; @top-left { content: none; } @top-right { content: none; } @bottom-center { content: none; } }
+  @page { size: A4; margin: 27mm 22mm 24mm;
+    @top-left { content: "${cab.replace(/"/g, "")}"; font: 8.5pt Roboto, Arial, sans-serif; color: #555; vertical-align: bottom; padding-bottom: 4mm; }
+    @top-right { content: "pág. " counter(page); font: 7.4pt Roboto, Arial, sans-serif; color: #545454; vertical-align: bottom; padding-bottom: 4mm; }
+    ${logoPie ? `@bottom-center { content: url("${logoPie}"); vertical-align: top; padding-top: 5mm; }` : ""} }
+  /* Portada sin cabecera ni logo al pie. Mismos márgenes que el resto: si la
+     primera hoja tuviera otro ancho útil, Chrome encogería todo el cuaderno. */
+  @page :first { @top-left { content: none; } @top-right { content: none; } @bottom-center { content: none; } }
   * { box-sizing: border-box; }
-  body { margin: 0; color: #2a2a2a; font: 400 9.6pt/1.45 Roboto, Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; color: #2a2a2a; font: 400 10.2pt/1.32 Roboto, Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   /* En pantalla, mismo ancho que la zona impresa: así se miden bien las páginas del índice. */
   @media screen { body { width: 166mm; margin: 0 auto; } }
-  .portada { height: 280mm; display: flex; flex-direction: column; align-items: center; padding-top: 112mm; text-align: center; background: #fff; position: relative; z-index: 2; }
-  .portada h1 { font: 400 25pt Gelasio, Georgia, serif; margin: 0; }
-  .portada h2 { font: 400 13pt Gelasio, Georgia, serif; color: #555; margin: 4mm 0 0; }
-  .portada p { font: italic 7.5pt Roboto, Arial, sans-serif; color: #555; margin: 8mm 0 0; }
+  .portada { height: 244mm; display: flex; flex-direction: column; align-items: center; padding-top: 85mm; text-align: center; }
+  .portada h1 { font: 400 33pt Gelasio, Georgia, serif; margin: 0; }
+  .portada h2 { font: 400 17.5pt Gelasio, Georgia, serif; color: #555; margin: 4mm 0 0; }
+  .portada p { font: italic 10.5pt/1.4 Roboto, Arial, sans-serif; color: #555; margin: 8mm 20mm 0; }
   .portada img { width: 52mm; margin-top: 26mm; }
-  .indice h1, .receta h1 { font: 400 17pt Gelasio, Georgia, serif; text-align: center; margin: 0 0 12mm; }
+  .indice h1, .receta h1 { font: 400 20.4pt Gelasio, Georgia, serif; text-align: center; margin: 0 0 9mm; }
+  .receta h1:has(+ .intro) { margin-bottom: 3mm; }
+  .intro { font: italic 9.8pt/1.4 Roboto, Arial, sans-serif; color: #444; text-align: center; margin: 0 8mm 9mm; }
   .indice { break-before: page; padding: 0 12mm; }
-  .indice .fila { display: flex; justify-content: space-between; font-size: 8.5pt; padding: 1.6mm 0; border-bottom: .3mm solid #bbb; }
+  .indice .fila { display: flex; justify-content: space-between; font-size: 11pt; padding: 1.4mm 0; border-bottom: .3mm solid #bbb; }
   .receta { break-before: page; }
-  .elab { display: grid; grid-template-columns: 38% 1fr; column-gap: 7mm; margin: 0 0 9mm; }
-  .et { font-weight: 700; text-decoration: underline; margin: 0 0 3mm; }
+  .elab { display: grid; grid-template-columns: 70mm 1fr; column-gap: 3mm; margin: 0 0 4.4mm; }
+  .et { font-weight: 700; text-decoration: underline; margin: 0 0 2.2mm; }
   table { border-collapse: collapse; }
-  td { padding: 0 6mm 1.7mm 0; vertical-align: top; }
-  .lr-p { margin: 0 0 2.2mm; text-align: justify; break-inside: avoid; }
+  td { padding: 0 4mm .2mm 0; vertical-align: top; }
+  td:last-child { white-space: nowrap; padding-right: 0; }
+  td.g { padding: 0 4mm .2mm 2.5mm; }
+  .lr-p { margin: 0 0 1.3mm; text-align: justify; break-inside: avoid; }
   .lr-nota { font-style: italic; color: #444; }
+  .elab:last-child, .elab .lr-p:last-child { margin-bottom: 0; }
 </style>
 </head>
 <body>
@@ -2579,10 +2604,10 @@ ${recetas.map(receta).join("")}
   // la hoja siguiente.
   _printWhenReady(w, (doc) => {
     if (!completo) return;
-    const util = (297 - 27 - 30) * 96 / 25.4;
+    const util = (297 - 27 - 24) * 96 / 25.4;
     const paginas = (sec) => {
       const top0 = sec.getBoundingClientRect().top;
-      const bloques = [...sec.querySelectorAll("h1, .et, tr, .lr-p")]
+      const bloques = [...sec.querySelectorAll("h1, .intro, .et, tr, .lr-p")]
         .map(el => { const r = el.getBoundingClientRect(); return { t: r.top - top0, h: r.height }; })
         .sort((a, b) => a.t - b.t);
       let desplaz = 0, finHoja = util, n = 1;
