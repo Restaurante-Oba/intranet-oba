@@ -3961,3 +3961,6 @@ body.partidas-only #hamburger-overlay{display:none !important}
 .libro-receta .lr-p{font-family:Georgia,serif;font-size:15px;line-height:1.55;margin:0 0 8px}
 .libro-parte{border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px;margin:0 0 12px}
 .libro-parte textarea{width:100%}
+.etq-row{display:flex;gap:8px;align-items:center;margin:0 0 8px}
+.etq-row input:not([type=checkbox]){flex:1;min-width:0}
+.etq-row .etq-sel{width:20px;height:20px;flex:0 0 auto}
